@@ -5,7 +5,7 @@ app = FastAPI(title="SecDev Course App", version="0.1.0")
 
 
 def validate_and_format_name(name: str) -> str:
-    if not name or not name.strip():
+    if not name:
         raise ApiError("validation_error", "name cannot be empty", 422)
 
     cleaned = name.strip()
