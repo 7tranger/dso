@@ -4,10 +4,8 @@
 
 ```mermaid
 graph TD
-    %% Внешние участники
     Client[Клиент<br/>Web Browser]
 
-    %% Границы доверия
     subgraph Edge["Edge Zone<br/>(DMZ/Proxy)"]
         LB[Load Balancer<br/>Reverse Proxy]
     end
@@ -22,10 +20,9 @@ graph TD
         MemoryDB[(In-Memory Database<br/>Items Storage)]
     end
 
-    %% Потоки данных
     Client -->|F1: HTTP/HTTPS<br/>GET /health| LB
     Client -->|F2: HTTP/HTTPS<br/>POST /items| LB
-    Client -->|F3: HTTP/HTTPS<br/>GET /items/{id}| LB
+    Client -->|F3: HTTP/HTTPS<br/>GET /items/id| LB
 
     LB -->|F4: HTTP<br/>Health Check| API
     LB -->|F5: HTTP<br/>Create Item| API
@@ -39,21 +36,9 @@ graph TD
     API -->|F11: Query Item| MemoryDB
     MemoryDB -->|F12: Item Data| API
 
-    %% Обработка ошибок
     API -->|F13: Validation Error| Validation
     API -->|F14: Not Found Error| API
     Validation -->|F15: Error Response| API
-
-    %% Стилизация
-    classDef external fill:#e1f5fe
-    classDef edge fill:#fff3e0
-    classDef core fill:#f3e5f5
-    classDef data fill:#e8f5e8
-
-    class Client external
-    class LB edge
-    class API,Auth,Validation core
-    class MemoryDB data
 ```
 
 ## Альтернативный сценарий (Обработка ошибок)
