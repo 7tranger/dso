@@ -35,3 +35,9 @@ def test_validate_and_format_name_short():
         assert False, "Should raise ApiError"
     except ApiError as e:
         assert "name too short" in e.message
+
+
+def test_correlation_id_header_present():
+    r = client.get("/health", headers={"X-Correlation-Id": "abc123"})
+    assert r.status_code == 200
+    assert r.headers.get("X-Correlation-Id") == "abc123"
