@@ -4,6 +4,21 @@ from fastapi.responses import JSONResponse
 app = FastAPI(title="SecDev Course App", version="0.1.0")
 
 
+def validate_and_format_name(name: str) -> str:
+    if not name:
+        raise ApiError("validation_error", "name cannot be empty", 422)
+
+    cleaned = name.strip()
+
+    if len(cleaned) < 1:
+        raise ApiError("validation_error", "name too short", 422)
+
+    if len(cleaned) > 100:
+        raise ApiError("validation_error", "name too long", 422)
+
+    return cleaned
+
+
 class ApiError(Exception):
     def __init__(self, code: str, message: str, status: int = 400):
         self.code = code
@@ -40,11 +55,8 @@ _DB = {"items": []}
 
 @app.post("/items")
 def create_item(name: str):
-    if not name or len(name) > 100:
-        raise ApiError(
-            code="validation_error", message="name must be 1..100 chars", status=422
-        )
-    item = {"id": len(_DB["items"]) + 1, "name": name}
+    formatted_name = validate_and_format_name(name)
+    item = {"id": len(_DB["items"]) + 1, "name": formatted_name}
     _DB["items"].append(item)
     return item
 
