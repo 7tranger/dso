@@ -37,6 +37,7 @@ def detect_magic_prefix(data: bytes) -> Optional[str]:
     return None
 
 
+
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         corr_id = request.headers.get("X-Correlation-Id") or uuid.uuid4().hex
