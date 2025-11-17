@@ -1,8 +1,7 @@
 from fastapi.testclient import TestClient
 
-from src.main import app
 from src.adapters.db import Base, engine
-
+from src.main import app
 
 client = TestClient(app)
 
@@ -21,7 +20,9 @@ def register_and_login(
 ) -> str:
     if reset:
         reset_db()
-    r = client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    r = client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
     assert r.status_code == 201
 
     r = client.post(
@@ -148,5 +149,3 @@ def test_validation_error_for_cards_payload_is_structured():
     assert body["code"] == "VALIDATION_ERROR"
     assert "details" in body
     assert "errors" in body["details"]
-
-

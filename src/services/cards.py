@@ -14,7 +14,11 @@ def _ensure_board_for_owner(db: Session, board_id: int, owner: User) -> Board:
     if board is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "BOARD_NOT_FOUND", "message": "Board not found", "details": {}},
+            detail={
+                "code": "BOARD_NOT_FOUND",
+                "message": "Board not found",
+                "details": {},
+            },
         )
     if board.owner_id != owner.id and owner.role != "admin":
         raise HTTPException(
@@ -47,7 +51,11 @@ def get_card(db: Session, card_id: int, requester: User) -> Card:
     if card is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"code": "CARD_NOT_FOUND", "message": "Card not found", "details": {}},
+            detail={
+                "code": "CARD_NOT_FOUND",
+                "message": "Card not found",
+                "details": {},
+            },
         )
     if card.owner_id != requester.id and requester.role != "admin":
         raise HTTPException(
@@ -72,7 +80,9 @@ def list_cards(
         q = q.filter(Card.column == column)
     if board_id is not None:
         q = q.filter(Card.board_id == board_id)
-    q = q.order_by(asc(Card.board_id), asc(Card.column), asc(Card.order_idx), asc(Card.id))
+    q = q.order_by(
+        asc(Card.board_id), asc(Card.column), asc(Card.order_idx), asc(Card.id)
+    )
     return q.offset(offset).limit(limit).all()
 
 
@@ -121,5 +131,3 @@ def to_card_out(card: Card) -> CardOut:
 
 def to_cards_out(cards: List[Card]) -> List[CardOut]:
     return [to_card_out(c) for c in cards]
-
-

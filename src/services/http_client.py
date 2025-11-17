@@ -60,5 +60,3 @@ class ExternalScoreService:
         if score is None:
             raise ExternalServiceError("Malformed response from scoring service")
         return float(score)
-
-

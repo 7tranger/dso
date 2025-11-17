@@ -1,7 +1,6 @@
 import logging
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
 from unittest import mock
 
 import httpx
@@ -22,7 +21,9 @@ def _auth_headers(token: str) -> dict[str, str]:
 def _create_user_and_board() -> tuple[str, int]:
     email = f"user-{datetime.now(timezone.utc).timestamp()}@example.com"
     password = "password123"
-    resp = client.post("/api/v1/auth/register", json={"email": email, "password": password})
+    resp = client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
     assert resp.status_code == 201
     resp = client.post(
         "/api/v1/auth/login",
@@ -56,7 +57,11 @@ def test_card_validation_rejects_invalid_estimate():
 
 def test_safe_http_client_timeout_raises_external_error():
     safe_client = SafeHttpClient(base_url="https://example.com", retries=3)
-    with mock.patch.object(safe_client._client, "request", side_effect=httpx.TimeoutException("boom")) as mocked:
+    with mock.patch.object(
+        safe_client._client,
+        "request",
+        side_effect=httpx.TimeoutException("boom"),
+    ) as mocked:
         with pytest.raises(ExternalServiceError):
             safe_client.request("GET", "/score")
         assert mocked.call_count == 3  # ensures retries triggered
@@ -75,5 +80,3 @@ def test_secret_masking_prevents_logging_plain_value(caplog, monkeypatch):
     caplog.set_level(logging.INFO)
     logging.getLogger("tests").info("Using secret %s", secret)
     assert "super-secret-value-1234567890" not in caplog.text
-
-

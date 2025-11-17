@@ -39,7 +39,9 @@ def _wrap_error(code: str, message: str, status_code: int) -> HTTPException:
     return HTTPException(status_code=status_code, detail=payload.model_dump())
 
 
-@router.post("/auth/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/auth/register", response_model=UserOut, status_code=status.HTTP_201_CREATED
+)
 def register_user(data: UserCreate, db: Session = Depends(get_db)):
     user = auth_svc.create_user(db, data)
     return user
@@ -173,11 +175,11 @@ def score_card_endpoint(
     payload = {
         "title": card.title,
         "column": card.column,
-        "estimate_hours": float(card.estimate_hours) if card.estimate_hours is not None else None,
+        "estimate_hours": (
+            float(card.estimate_hours) if card.estimate_hours is not None else None
+        ),
         "due_date": card.due_date.isoformat() if card.due_date else None,
         "context": data.context,
     }
     score = fetch_score_or_raise(payload)
     return ScoreResponse(score=score)
-
-

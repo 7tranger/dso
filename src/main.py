@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -9,7 +8,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.adapters.db import init_db
 from src.app.api import router as api_router
-
 
 app = FastAPI(
     title="Idea Kanban API",
@@ -74,5 +72,3 @@ def health():
 
 
 app.include_router(api_router)
-
-

@@ -27,5 +27,3 @@ def fetch_score_or_raise(payload: Dict[str, Any]) -> float:
                 "details": {},
             },
         ) from exc
-
-

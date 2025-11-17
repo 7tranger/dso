@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-
 
 CardColumn = Literal["backlog", "todo", "in_progress", "done"]
 
@@ -60,7 +59,9 @@ class CardBase(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     column: CardColumn
     order_idx: int = Field(ge=0)
-    estimate_hours: Optional[Decimal] = Field(default=None, ge=Decimal("0"), le=Decimal("1000"))
+    estimate_hours: Optional[Decimal] = Field(
+        default=None, ge=Decimal("0"), le=Decimal("1000")
+    )
     due_date: Optional[datetime] = None
 
     @field_validator("title")
@@ -100,7 +101,9 @@ class CardUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=255)
     column: Optional[CardColumn] = None
     order_idx: Optional[int] = Field(default=None, ge=0)
-    estimate_hours: Optional[Decimal] = Field(default=None, ge=Decimal("0"), le=Decimal("1000"))
+    estimate_hours: Optional[Decimal] = Field(
+        default=None, ge=Decimal("0"), le=Decimal("1000")
+    )
     due_date: Optional[datetime] = None
 
     @field_validator("title")
@@ -156,4 +159,3 @@ class ScoreRequest(BaseModel):
 class ScoreResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     score: float
-

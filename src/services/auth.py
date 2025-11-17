@@ -12,7 +12,6 @@ from src.adapters.models import User
 from src.domain.schemas import Token, UserCreate
 from src.services.secrets import get_secret
 
-
 # Lazy initialization to avoid bcrypt initialization bug with long test passwords
 _pwd_context: CryptContext | None = None
 
@@ -22,6 +21,7 @@ def get_pwd_context() -> CryptContext:
     if _pwd_context is None:
         _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
     return _pwd_context
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -53,7 +53,11 @@ def create_user(db: Session, data: UserCreate, role: str = "user") -> User:
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "USER_ALREADY_EXISTS", "message": "User already exists", "details": {}},
+            detail={
+                "code": "USER_ALREADY_EXISTS",
+                "message": "User already exists",
+                "details": {},
+            },
         )
     user = User(
         email=data.email,
@@ -76,10 +80,16 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     return user
 
 
-def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
+def get_current_user(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"code": "UNAUTHORIZED", "message": "Could not validate credentials", "details": {}},
+        detail={
+            "code": "UNAUTHORIZED",
+            "message": "Could not validate credentials",
+            "details": {},
+        },
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -109,7 +119,11 @@ def require_admin(current_user: User = Depends(get_current_active_user)) -> User
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"code": "FORBIDDEN", "message": "Admin role required", "details": {}},
+            detail={
+                "code": "FORBIDDEN",
+                "message": "Admin role required",
+                "details": {},
+            },
         )
     return current_user
 
@@ -117,5 +131,3 @@ def require_admin(current_user: User = Depends(get_current_active_user)) -> User
 def issue_token_for_user(user: User) -> Token:
     token_str = create_access_token(sub=str(user.id), role=user.role)
     return Token(access_token=token_str)
-
-

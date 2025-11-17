@@ -35,5 +35,3 @@ def get_secret(
         raise RuntimeError(f"Secret '{name}' has insufficient length")
 
     return SecretValue(name=name, _value=raw)
-
-
