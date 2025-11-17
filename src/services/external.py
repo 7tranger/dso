@@ -4,21 +4,21 @@ from typing import Any, Dict
 
 from fastapi import HTTPException, status
 
-from src.services.http_client import ExternalScoreService, ExternalServiceError, SafeHttpClient
+import src.services.http_client
 
 
 @lru_cache(maxsize=1)
-def get_score_service() -> ExternalScoreService:
+def get_score_service() -> src.services.http_clientExternalScoreService:
     base_url = os.getenv("SCORE_API_BASE", "https://example.com")
-    client = SafeHttpClient(base_url=base_url)
-    return ExternalScoreService(client)
+    client = src.services.http_clientSafeHttpClient(base_url=base_url)
+    return src.services.http_clientExternalScoreService(client)
 
 
 def fetch_score_or_raise(payload: Dict[str, Any]) -> float:
     service = get_score_service()
     try:
         return service.fetch_score(payload)
-    except ExternalServiceError as exc:
+    except src.services.http_clientExternalServiceError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
