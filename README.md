@@ -5,6 +5,11 @@
 ## Тесты
 
 ```bash
+ruff check --fix .
+black .
+isort .
+pytest -q
+pre-commit run --all-files
 py -m pytest -v
 ```
 
@@ -24,22 +29,90 @@ py -m uvicorn src.main:app --reload
 
 ## Docker / Compose
 
+### Быстрый запуск
+
 ```bash
-docker build -t idea-kanban .
-docker run --rm -p 8000:8000 idea-kanban
-# или
-docker compose up --build
+# Через Docker Compose (рекомендуется)
+docker compose --profile dev up --build
+
+# Или через скрипт
+./scripts/run.sh
+
+# Или напрямую через Docker
+docker build -t idea-kanban:latest .
+docker run --rm -p 8000:8000 --env-file .env idea-kanban:latest
 ```
 
-Контейнер также открывает Swagger на `http://127.0.0.1:8000/docs`.
+### Особенности Docker-конфигурации
+
+- **Multi-stage build**: минимальный финальный образ без dev-инструментов
+- **Non-root пользователь**: контейнер запускается от пользователя `app` (UID 1000)
+- **Healthcheck**: автоматическая проверка состояния через `/health` endpoint
+- **Переменные окружения**: настройка через `.env` файл (см. ниже)
+- **Повторяемость сборки**: закрепленные версии зависимостей
+
+### Переменные окружения для Docker
+
+Создайте файл `.env` на основе следующего шаблона:
+
+```bash
+DATABASE_URL=sqlite:///./idea_kanban.db
+JWT_SECRET=your-super-secret-jwt-key-minimum-16-chars
+SCORE_API_BASE=https://example.com
+PYTHONUNBUFFERED=1
+
+```
+
+#### Тестирование контейнера
+
+```bash
+./scripts/test_container.sh
+```
+
+### Healthcheck
+
+Контейнер автоматически проверяет свое состояние:
+- **Интервал**: 30 секунд
+- **Таймаут**: 10 секунд
+- **Стартовый период**: 40 секунд
+- **Попытки**: 3
+
+### Проверки безопасности
+
+В CI/CD автоматически выполняются следующие проверки:
+
+- **Hadolint**: статический анализ Dockerfile
+- **Trivy**: сканирование уязвимостей образа (SCA/SBOM)
+- **Проверка пользователя**: убеждение, что процесс не запущен от root
+- **Проверка healthcheck**: контейнер становится здоровым после запуска
+
+Результаты Trivy загружаются как артефакты CI.
+
+После запуска:
+- API: `http://localhost:8000/api/v1/...`
+- Swagger UI: `http://localhost:8000/docs`
+- Health endpoint: `http://localhost:8000/health`
 
 ## Переменные окружения
+
+### Локальная разработка
+
+При локальном запуске переменные можно задавать через окружение или через `.env` файл:
+
+```bash
+export DATABASE_URL="sqlite:///./idea_kanban.db"
+export JWT_SECRET="your-secret-key-minimum-16-chars"
+export SCORE_API_BASE="https://example.com"
+```
+
+### Описание переменных
 
 - `DATABASE_URL` — строка подключения к БД:
   - по умолчанию: `sqlite:///./idea_kanban.db`
   - пример Postgres: `postgresql+psycopg2://user:pass@localhost:5432/idea_kanban`
 - `JWT_SECRET` — обязательный секрет для подписи JWT (мин. 16 символов).
 - `SCORE_API_BASE` — базовый URL внешнего сервиса скоринга (по умолчанию `https://example.com`).
+- `PYTHONUNBUFFERED` — переменная окружения Python (рекомендуется `1` для Docker).
 
 ## Тесты и качество
 
