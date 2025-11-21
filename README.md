@@ -5,6 +5,11 @@
 ## Тесты
 
 ```bash
+ruff check --fix .
+black .
+isort .
+pytest -q
+pre-commit run --all-files
 py -m pytest -v
 ```
 
@@ -232,4 +237,3 @@ Authorization: Bearer <JWT>
   ```
 
 См. также: `SECURITY.md`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`.
-

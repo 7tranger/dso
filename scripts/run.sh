@@ -39,5 +39,3 @@ docker ps --filter name=idea-kanban
 
 echo -e "${GREEN}Для просмотра логов: docker logs -f idea-kanban${NC}"
 echo -e "${GREEN}Для остановки: docker stop idea-kanban${NC}"
-
-

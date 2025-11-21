@@ -52,19 +52,19 @@ HEALTHY=false
 
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "starting")
-    
+
     if [ "$HEALTH_STATUS" = "healthy" ]; then
         HEALTHY=true
         echo -e "${GREEN}Контейнер здоров${NC}"
         break
     fi
-    
+
     if [ "$HEALTH_STATUS" = "unhealthy" ]; then
         echo -e "${RED}Контейнер нездоров${NC}"
         docker logs "$CONTAINER_NAME"
         exit 1
     fi
-    
+
     echo -e "${YELLOW}Ожидание... (${ELAPSED}s/${MAX_WAIT}s) - статус: $HEALTH_STATUS${NC}"
     sleep $SLEEP_INTERVAL
     ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
@@ -102,4 +102,3 @@ echo -e "${GREEN}Контейнер: $CONTAINER_NAME${NC}"
 echo -e "${GREEN}Пользователь: $(docker exec "$CONTAINER_NAME" id -un) (UID: $USER_ID)${NC}"
 echo -e "${GREEN}Health статус: $(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME")${NC}"
 echo -e "${GREEN}Все проверки пройдены успешно! ${NC}"
-
