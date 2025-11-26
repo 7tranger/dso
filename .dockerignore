@@ -1,17 +1,51 @@
+# Git
 .git
 .gitignore
 .gitattributes
+.github/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+.venv/
+venv/
+ENV/
+env/
+
+# Базы данных
 *.sqlite
 *.db
-.venv/
+*.sqlite3
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Сборка и дистрибуция
 dist/
 build/
-.pytest_cache/
-.coverage
-htmlcov/
+
+# Другое
 node_modules/
 .env
+.env.local
+.env.*.local
+
+
+# Временные файлы
+tmp/
+temp/
+*.tmp

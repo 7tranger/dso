@@ -35,3 +35,117 @@ jobs:
         run: pytest -q
       - name: Pre-commit (all files)
         run: pre-commit run --all-files --show-diff-on-failure
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+          ignore: DL3008,DL3009
+
+      - name: Build Docker image
+        run: |
+          docker build -t idea-kanban:latest .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        continue-on-error: true
+        with:
+          image-ref: 'idea-kanban:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Check if SARIF file exists
+        id: check_sarif
+        run: |
+          if [ -f "trivy-results.sarif" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && steps.check_sarif.outputs.exists == 'true'
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Check non-root user
+        run: |
+          docker run --rm -d --name test-container -p 8000:8000 \
+            -e JWT_SECRET="test-secret-key-minimum-16-characters" \
+            -e DATABASE_URL="sqlite:///./test.db" \
+            -e SCORE_API_BASE="https://example.com" \
+            idea-kanban:latest
+
+          sleep 5
+
+          USER_ID=$(docker exec test-container id -u)
+          if [ "$USER_ID" = "0" ]; then
+            echo "Ошибка: процесс запущен от root (UID: $USER_ID)"
+            exit 1
+          else
+            echo "Пользователь не root (UID: $USER_ID)"
+          fi
+
+          USER_NAME=$(docker exec test-container id -un)
+          echo "Пользователь: $USER_NAME (UID: $USER_ID)"
+
+      - name: Check healthcheck
+        run: |
+          MAX_WAIT=60
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' test-container 2>/dev/null || echo "starting")
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "Контейнер здоров"
+              break
+            fi
+
+            if [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "Контейнер нездоров"
+              docker logs test-container
+              exit 1
+            fi
+
+            echo "Ожидание healthcheck... (${ELAPSED}s/${MAX_WAIT}s) - статус: $HEALTH_STATUS"
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+          done
+
+          if [ "$HEALTH_STATUS" != "healthy" ]; then
+            echo "Таймаут ожидания healthcheck"
+            docker logs test-container
+            exit 1
+          fi
+
+          docker inspect --format='{{json .State.Health}}' test-container
+
+      - name: Check HTTP endpoint
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "HTTP endpoint /health доступен (код: $HTTP_CODE)"
+          else
+            echo "HTTP endpoint /health недоступен (код: $HTTP_CODE)"
+            docker logs test-container
+            exit 1
+          fi
+
+          RESPONSE=$(curl -s http://localhost:8000/health)
+          echo "Ответ: $RESPONSE"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop test-container 2>/dev/null || true
+          docker rm test-container 2>/dev/null || true
