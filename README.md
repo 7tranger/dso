@@ -1,5 +1,7 @@
 # Idea Kanban API
 
+![CI](https://github.com/7tranger/dso/actions/workflows/ci.yml/badge.svg)
+
 Минимальный Kanban-сервис для идей и мини-проектов (FastAPI + SQLAlchemy + SQLite/Postgres).
 
 ## Тесты
