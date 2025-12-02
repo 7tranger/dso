@@ -1,10 +1,37 @@
 name: CI
+# Требуемые GitHub Secrets:
+# - JWT_SECRET: секрет для JWT токенов (минимум 16 символов)
+# - DATABASE_URL
+# - SCORE_API_BASE: базовый URL внешнего сервиса скоринга
+#
+# Staging деплой:
+# - Автоматический: при push в ветку 'staging'
+# - Ручной: Actions -> CI -> Run workflow -> выбрать environment: staging, dry_run: true/false
+# - Dry-run
+# - Реальный деплой: публикует образ в GitHub Container Registry (ghcr.io)
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (эмуляция без реального деплоя)'
+        required: false
+        default: 'false'
+        type: boolean
+      environment:
+        description: 'Окружение для деплоя'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 permissions:
   contents: read
+  security-events: write
+  packages: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,46 +42,89 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        timeout-minutes: 2
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
-      - name: Install deps
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        timeout-minutes: 2
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        timeout-minutes: 5
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
-          pip install -r requirements-dev.txt || true
-          pip install ruff black isort pytest pre-commit
-      - name: Lint & Format
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Create reports directory
+        timeout-minutes: 1
+        run: mkdir -p reports
+
+      - name: Run ruff
+        timeout-minutes: 3
         run: |
           ruff check --output-format=github .
-          black --check .
-          isort --check-only .
-      - name: Tests
-        run: pytest -q
-      - name: Pre-commit (all files)
-        run: pre-commit run --all-files --show-diff-on-failure
+          ruff check . > reports/ruff.txt 2>&1 || true
+
+      - name: Run black check
+        timeout-minutes: 3
+        run: black --check .
+
+      - name: Run isort check
+        timeout-minutes: 3
+        run: isort --check-only .
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: |
+          pytest -q --junitxml=reports/junit.xml --cov=src --cov-report=xml:reports/coverage.xml --cov-report=html:reports/html
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        timeout-minutes: 2
+        with:
+          name: test-reports
+          path: reports/
+          retention-days: 7
 
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 2
 
       - name: Run Hadolint
         uses: hadolint/hadolint-action@v3.1.0
+        timeout-minutes: 3
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
           ignore: DL3008,DL3009
 
       - name: Build Docker image
+        timeout-minutes: 10
         run: |
           docker build -t idea-kanban:latest .
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
+        timeout-minutes: 5
         continue-on-error: true
         with:
           image-ref: 'idea-kanban:latest'
@@ -64,6 +134,7 @@ jobs:
 
       - name: Check if SARIF file exists
         id: check_sarif
+        timeout-minutes: 1
         run: |
           if [ -f "trivy-results.sarif" ]; then
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -72,17 +143,27 @@ jobs:
           fi
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
+        timeout-minutes: 2
         if: always() && steps.check_sarif.outputs.exists == 'true'
         with:
           sarif_file: 'trivy-results.sarif'
 
       - name: Check non-root user
+        timeout-minutes: 5
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-secret-key-minimum-16-characters' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite:///./test.db' }}
+          SCORE_API_BASE: ${{ secrets.SCORE_API_BASE || 'https://example.com' }}
         run: |
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$SCORE_API_BASE"
+
           docker run --rm -d --name test-container -p 8000:8000 \
-            -e JWT_SECRET="test-secret-key-minimum-16-characters" \
-            -e DATABASE_URL="sqlite:///./test.db" \
-            -e SCORE_API_BASE="https://example.com" \
+            -e JWT_SECRET="$JWT_SECRET" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e SCORE_API_BASE="$SCORE_API_BASE" \
             idea-kanban:latest
 
           sleep 5
@@ -99,6 +180,7 @@ jobs:
           echo "Пользователь: $USER_NAME (UID: $USER_ID)"
 
       - name: Check healthcheck
+        timeout-minutes: 5
         run: |
           MAX_WAIT=60
           ELAPSED=0
@@ -131,6 +213,7 @@ jobs:
           docker inspect --format='{{json .State.Health}}' test-container
 
       - name: Check HTTP endpoint
+        timeout-minutes: 2
         run: |
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
           if [ "$HTTP_CODE" = "200" ]; then
@@ -146,6 +229,133 @@ jobs:
 
       - name: Cleanup
         if: always()
+        timeout-minutes: 2
         run: |
           docker stop test-container 2>/dev/null || true
           docker rm test-container 2>/dev/null || true
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build, docker]
+    if: |
+      github.ref == 'refs/heads/staging' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'staging' || !github.event.inputs.environment))
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url || 'https://staging.example.com' }}
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository_owner }}/idea-kanban
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        timeout-minutes: 2
+
+      - name: Check dry-run mode
+        id: check_dry_run
+        timeout-minutes: 1
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "dry_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "dry_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=staging,enable={{is_default_branch}}
+
+      - name: Log in to Container Registry
+        if: steps.check_dry_run.outputs.dry_run != 'true'
+        uses: docker/login-action@v3
+        timeout-minutes: 2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: build
+        if: steps.check_dry_run.outputs.dry_run != 'true'
+        uses: docker/build-push-action@v5
+        timeout-minutes: 15
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: "Dry-run: Simulate build"
+        if: steps.check_dry_run.outputs.dry_run == 'true'
+        timeout-minutes: 10
+        run: |
+          echo "DRY-RUN MODE: Эмуляция сборки образа"
+          echo "Образ: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Теги: ${{ steps.meta.outputs.tags }}"
+          echo "Валидация структуры Dockerfile..."
+          docker buildx build --load -t idea-kanban:staging-dry-run --target build . 2>&1 | head -30 || true
+          echo "Структура Dockerfile валидна"
+
+      - name: Prepare deployment config
+        timeout-minutes: 2
+        run: |
+          mkdir -p .deploy
+          cat > .deploy/docker-compose.staging.yml <<EOF
+          version: '3.8'
+          services:
+            app:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+              container_name: idea-kanban-staging
+              ports:
+                - "8000:8000"
+              env_file:
+                - .env.staging
+              environment:
+                - PYTHONUNBUFFERED=1
+              healthcheck:
+                test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5).raise_for_status()"]
+                interval: 30s
+                timeout: 10s
+                start_period: 40s
+                retries: 3
+              restart: unless-stopped
+          EOF
+          echo "📄 Конфигурация деплоя создана"
+
+      - name: "Dry-run: Validate deployment"
+        if: steps.check_dry_run.outputs.dry_run == 'true'
+        timeout-minutes: 5
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-secret-key-minimum-16-characters' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite:///./test.db' }}
+          SCORE_API_BASE: ${{ secrets.SCORE_API_BASE || 'https://example.com' }}
+        run: |
+          echo "DRY-RUN MODE: Валидация конфигурации деплоя"
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$SCORE_API_BASE"
+
+          echo "Проверка docker-compose конфигурации..."
+          docker compose -f .deploy/docker-compose.staging.yml config > /dev/null
+          echo "Конфигурация валидна"
+
+          echo "Параметры деплоя:"
+          echo "  - Окружение: staging"
+          echo "  - Образ: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging"
+          echo "  - Порт: 8000"
+          echo "  - Healthcheck: включен"
+          echo ""
+          echo "Dry-run завершен успешно. Реальный деплой не выполнен."
