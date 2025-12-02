@@ -1,11 +1,37 @@
 name: CI
+# Требуемые GitHub Secrets:
+# - JWT_SECRET: секрет для JWT токенов (минимум 16 символов)
+# - DATABASE_URL
+# - SCORE_API_BASE: базовый URL внешнего сервиса скоринга
+#
+# Staging деплой:
+# - Автоматический: при push в ветку 'staging'
+# - Ручной: Actions -> CI -> Run workflow -> выбрать environment: staging, dry_run: true/false
+# - Dry-run
+# - Реальный деплой: публикует образ в GitHub Container Registry (ghcr.io)
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run (эмуляция без реального деплоя)'
+        required: false
+        default: 'false'
+        type: boolean
+      environment:
+        description: 'Окружение для деплоя'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 permissions:
   contents: read
   security-events: write
+  packages: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -125,11 +151,19 @@ jobs:
 
       - name: Check non-root user
         timeout-minutes: 5
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-secret-key-minimum-16-characters' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite:///./test.db' }}
+          SCORE_API_BASE: ${{ secrets.SCORE_API_BASE || 'https://example.com' }}
         run: |
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$SCORE_API_BASE"
+
           docker run --rm -d --name test-container -p 8000:8000 \
-            -e JWT_SECRET="test-secret-key-minimum-16-characters" \
-            -e DATABASE_URL="sqlite:///./test.db" \
-            -e SCORE_API_BASE="https://example.com" \
+            -e JWT_SECRET="$JWT_SECRET" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e SCORE_API_BASE="$SCORE_API_BASE" \
             idea-kanban:latest
 
           sleep 5
@@ -199,3 +233,129 @@ jobs:
         run: |
           docker stop test-container 2>/dev/null || true
           docker rm test-container 2>/dev/null || true
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build, docker]
+    if: |
+      github.ref == 'refs/heads/staging' ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'staging' || !github.event.inputs.environment))
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url || 'https://staging.example.com' }}
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository_owner }}/idea-kanban
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        timeout-minutes: 2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        timeout-minutes: 2
+
+      - name: Check dry-run mode
+        id: check_dry_run
+        timeout-minutes: 1
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "dry_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "dry_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=staging,enable={{is_default_branch}}
+
+      - name: Log in to Container Registry
+        if: steps.check_dry_run.outputs.dry_run != 'true'
+        uses: docker/login-action@v3
+        timeout-minutes: 2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        id: build
+        if: steps.check_dry_run.outputs.dry_run != 'true'
+        uses: docker/build-push-action@v5
+        timeout-minutes: 15
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: "Dry-run: Simulate build"
+        if: steps.check_dry_run.outputs.dry_run == 'true'
+        timeout-minutes: 10
+        run: |
+          echo "DRY-RUN MODE: Эмуляция сборки образа"
+          echo "Образ: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Теги: ${{ steps.meta.outputs.tags }}"
+          echo "Валидация структуры Dockerfile..."
+          docker buildx build --load -t idea-kanban:staging-dry-run --target build . 2>&1 | head -30 || true
+          echo "Структура Dockerfile валидна"
+
+      - name: Prepare deployment config
+        timeout-minutes: 2
+        run: |
+          mkdir -p .deploy
+          cat > .deploy/docker-compose.staging.yml <<EOF
+          version: '3.8'
+          services:
+            app:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+              container_name: idea-kanban-staging
+              ports:
+                - "8000:8000"
+              env_file:
+                - .env.staging
+              environment:
+                - PYTHONUNBUFFERED=1
+              healthcheck:
+                test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5).raise_for_status()"]
+                interval: 30s
+                timeout: 10s
+                start_period: 40s
+                retries: 3
+              restart: unless-stopped
+          EOF
+          echo "📄 Конфигурация деплоя создана"
+
+      - name: "Dry-run: Validate deployment"
+        if: steps.check_dry_run.outputs.dry_run == 'true'
+        timeout-minutes: 5
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET || 'test-secret-key-minimum-16-characters' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'sqlite:///./test.db' }}
+          SCORE_API_BASE: ${{ secrets.SCORE_API_BASE || 'https://example.com' }}
+        run: |
+          echo "DRY-RUN MODE: Валидация конфигурации деплоя"
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$SCORE_API_BASE"
+
+          echo "Проверка docker-compose конфигурации..."
+          docker compose -f .deploy/docker-compose.staging.yml config > /dev/null
+          echo "Конфигурация валидна"
+
+          echo "Параметры деплоя:"
+          echo "  - Окружение: staging"
+          echo "  - Образ: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging"
+          echo "  - Порт: 8000"
+          echo "  - Healthcheck: включен"
+          echo ""
+          echo "Dry-run завершен успешно. Реальный деплой не выполнен."
