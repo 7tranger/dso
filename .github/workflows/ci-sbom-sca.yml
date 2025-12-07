@@ -34,6 +34,21 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
+      - name: Add git metadata to SBOM
+        run: |
+          commit_sha="${GITHUB_SHA}"
+          repo="${GITHUB_REPOSITORY}"
+
+          jq --arg sha "$commit_sha" --arg repo "$repo" '
+            .metadata |= (. // {}) |
+            .metadata.properties |= ((. // []) + [
+              {"name": "git.commit", "value": $sha},
+              {"name": "git.repository", "value": $repo}
+            ])
+          ' EVIDENCE/P09/sbom.json > EVIDENCE/P09/sbom.tmp
+
+          mv EVIDENCE/P09/sbom.tmp EVIDENCE/P09/sbom.json
+
       - name: SCA Scan (Grype)
         shell: bash
         run: |
