@@ -1,6 +1,7 @@
 name: Security - SBOM & SCA
 
 on:
+  pull_request:
   workflow_dispatch:
   push:
     paths:
