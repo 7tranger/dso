@@ -1,0 +1,24 @@
+title = "Gitleaks Config"
+
+[extend]
+useDefault = true
+
+# Allowlist - paths and regexes to ignore
+[allowlist]
+description = "Global allowlist"
+paths = [
+  # ignore test fixtures and example files
+  '''tests/fixtures/''',
+  '''examples/''',
+  # ignore evidence and report directories
+  '''EVIDENCE/''',
+  '''reports/''',
+]
+
+# Allowlist specific patterns that are false positives
+regexes = [
+  # ignore specific test API keys
+  '''test[-_]?key[-_]?[0-9a-f]{32}''',
+  # ignore localhost URLs with tokens
+  '''http://localhost:.*token=.*''',
+]
