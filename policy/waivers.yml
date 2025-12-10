@@ -1,0 +1,30 @@
+# Security Policy Waivers
+# Каждое исключение должно содержать:
+# - обоснование (justification): причина, по которой требуется исключение
+# - ссылка на Issue/PR (issue_pr_link): ссылка на связанный Issue или Pull Request
+# - срок пересмотра (review_date): дата, до которой исключение нужно решить
+#
+# Исключения должны быть на минимально возможный срок и регулярно пересматриваться.
+
+waivers:
+  # Временное исключение для уязвимости с низким приоритетом
+  - id: waiver-001
+    component: "fastapi==0.115.0"
+    justification: |
+      Уязвимость имеет низкий приоритет (Low) и не влияет на текущий функционал.
+      Обновление до исправленной версии запланировано в следующем спринте.
+    issue_pr_link: "https://github.com/7tranger/dso/issues/..."
+    review_date: "2026-01-30"
+    status: "active"
+    owner: "Backend Dev"
+
+  # Исключение для известной зависимости с планом миграции
+  - id: waiver-002
+    component: "sqlalchemy==2.0.23"
+    justification: |
+      Уязвимость требует миграции на новую версию c breaking changes.
+      План миграции описан в ADR-004, работа запланирована на следующий квартал.
+    issue_pr_link: "https://github.com/7tranger/dso/pull/..."
+    review_date: "2025-12-15"
+    status: "active"
+    owner: "Backend Dev"
