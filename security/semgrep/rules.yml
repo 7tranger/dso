@@ -1,0 +1,37 @@
+rules:
+  - id: hardcoded-password
+    patterns:
+      - pattern: password = "..."
+      - pattern-not: password = ""
+    message: Hardcoded password detected. Use environment variables or secure vaults instead.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology:
+        - python
+
+  - id: sql-injection-risk
+    patterns:
+      - pattern: $CURSOR.execute(... + $VAR + ...)
+      - pattern: $CURSOR.execute(f"...{$VAR}...")
+    message: Potential SQL injection. Use parameterized queries instead.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: "CWE-89: SQL Injection"
+      technology:
+        - python
+
+  - id: flask-debug-enabled
+    patterns:
+      - pattern: app.run(..., debug=True, ...)
+      - pattern: app.debug = True
+    message: Flask debug mode should not be enabled in production
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology:
+        - flask
